@@ -1,4 +1,4 @@
-# FYP
+# Chat-Application
 
 Developed using ASP.NET Core Web API, Vuejs, and SignalR.
 
