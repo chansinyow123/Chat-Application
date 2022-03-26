@@ -1,0 +1,227 @@
+<template>
+  <v-card
+    tile
+    flat
+    class="d-flex flex-column fill-height"
+  >
+    <v-app-bar
+      flat
+      tile
+      color="panel"
+      dark
+      class="flex-grow-0"
+    >
+      <v-btn icon @click="$_back({ name: 'Group', params: { groupId: groupId } })">
+        <v-icon>mdi-arrow-left</v-icon>
+      </v-btn>
+
+      <v-toolbar-title class="px-2">Message Info</v-toolbar-title>
+
+      <v-spacer></v-spacer>
+      
+    </v-app-bar>
+
+    <v-card
+      tile
+      flat
+      class="flex-grow-1 overflow-y-auto"
+      color="chatBackground"
+    >
+
+      <div 
+        v-if="initLoading"
+        class="fill-height d-flex flex-column justify-center align-center"
+      >
+        <v-progress-circular
+          indeterminate
+          color="primary"
+        ></v-progress-circular>  
+        <div class="mt-3">Getting Message Info...</div>
+      </div>
+
+      <div
+        v-else-if="!exist"
+        class="fill-height d-flex justify-center align-center"
+      >
+        <div>
+          <span>This message is not available.</span>
+        </div>
+      </div>
+
+      <div v-else>
+        <div class="d-flex flex-column px-3 py-4">
+
+          <MessageBox :show-name="uid != message.senderId" :m="message" />
+
+        </div>
+
+        <v-list 
+          class="pa-0"
+          subheader
+          flat
+          two-line
+        >
+          <v-divider></v-divider>
+
+          <v-subheader>Read by</v-subheader>
+
+          <v-divider></v-divider>
+
+          <template v-for="r in read">
+            <v-list-item :key="r.id">
+              <v-list-item-avatar>
+                <v-img :src="getUserImage(r.userId)"></v-img>
+              </v-list-item-avatar>
+              <v-list-item-content>
+                <v-list-item-title v-text="getUserName(r.userId)"></v-list-item-title>
+                <v-list-item-subtitle v-text="getDateTime(r.onSeen)"></v-list-item-subtitle>
+              </v-list-item-content>
+            </v-list-item>
+
+            <v-divider></v-divider>
+          </template>
+        </v-list>
+
+        <v-list 
+          class="pa-0 mt-5"
+          subheader
+          flat
+          two-line
+        >
+
+          <v-divider></v-divider>
+
+          <v-subheader>Delivered to</v-subheader>
+
+          <v-divider></v-divider>
+
+          <template v-for="r in delivered">
+            <v-list-item :key="r.id">
+              <v-list-item-avatar>
+                <v-img :src="getUserImage(r.userId)"></v-img>
+              </v-list-item-avatar>
+              <v-list-item-content>
+                <v-list-item-title v-text="getUserName(r.userId)"></v-list-item-title>
+                <v-list-item-subtitle v-text="getDateTime(message.onCreate)"></v-list-item-subtitle>
+              </v-list-item-content>
+            </v-list-item>
+
+            <v-divider></v-divider>
+          </template>
+        </v-list>
+      </div>
+    </v-card>
+  </v-card>
+</template>
+
+<script>
+import MessageBox from '../components/MessageBox.vue'
+
+export default {
+  name: 'GroupMessageInfo',
+  components: {
+    MessageBox
+  },
+  data: () => ({
+    uid: '',                           // to get my own uid
+    source: null,                      // to cancel axios operation
+    initLoading: true,                 // to show initial loading state
+    exist: false,                      // check if message exist or not
+    // message data
+    message: {
+      senderId: '',
+      message: '',
+      location: null,
+      file: null,
+      fileName: null,
+      fileSize: null,
+      onCreate: '',
+      onDelete: null,
+      onSeen: false,
+    },
+    seenBy: [
+      {
+        userId: '',
+        onSeen: '',
+      },
+    ],
+  }),
+  props: {
+    groupId: {
+      required: true,
+    },
+    messageId: {
+      required: true,
+    }
+  },
+  computed: {
+    read() {
+      return this.seenBy.filter(x => x.onSeen != null);
+    },
+    delivered() {
+      return this.seenBy.filter(x => x.onSeen == null);
+    },
+  },
+  async created() {
+    // initialize cancelToken source
+    this.source = this.$axios.CancelToken.source();
+    // initialize uid
+    this.uid = this.$getCookie('uid');
+
+    try {
+      // axios get request with infinite retry ------------------------------------------
+      // apply cancelToken as well
+      const response = await this.$axios.get('/group/message', {
+        'axios-retry': { retries: Infinity },
+        cancelToken: this.source.token,
+        params: {
+          groupId: this.groupId,
+          messageId: this.messageId
+        }
+      });
+
+      // get the response data
+      let data = response.data;
+
+      this.message = data.message;
+      this.seenBy = data.seenBy;
+
+      // show message info
+      this.exist = true;
+    }
+    catch (error) {
+
+      // if operation is cancel, no need do error handling
+      if (this.$axios.isCancel(error)) {
+        console.log('Request cancelled');
+        return;
+      }
+      
+      console.error(error);
+    }
+    finally {
+      this.initLoading = false;
+    }
+  },
+  beforeDestroy() {
+    // cancel any axios operation
+    this.source.cancel();
+  },
+  methods: {
+    getUserName(id) { return this.$store.getters['accounts/getName'](id); },
+    getUserImage(id) { return this.$store.getters['accounts/getImage'](id) },
+    getDateTime(iso) {
+      // if no date found, return dash
+      if (!iso) return "-";
+
+      // else return the date and time
+      let date = new Date(iso);
+      return date.toLocaleDateString() + " at " + this.$getTime(date);
+    },
+  }
+}
+</script>
+
+<style>
+
+</style>
